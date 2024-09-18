@@ -156,10 +156,10 @@ def main():
             st.text_input("📧 Email ID", value=email, disabled=True)
         
         with col2:
-            entry_date = st.date_input("📆 Date", date.today())  # Calender opens on click
-            entry_time = st.time_input("🕒 Entry Time", datetime.now().time())  # 24-hour format
+            entry_date = st.date_input("📆 Date", date.today())  # Calendar opens on click
+            entry_time = st.time_input("🕒 Entry Time", datetime.now().time())  # Use .time() to get the time part
         
-        exit_time = st.time_input("🕒 Exit Time", datetime.now().time())  # 24-hour format
+        exit_time = st.time_input("🕒 Exit Time", datetime.now().time())  # Use .time() to get the time part
         
         if st.button("📝 Submit Attendance", use_container_width=True):
             if name and email and entry_time and exit_time:
