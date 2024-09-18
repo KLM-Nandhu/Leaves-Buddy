@@ -21,30 +21,26 @@ index = None
 try:
     pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
     
-    # Check if the index exists, if not create it
-    if PINECONE_INDEX_NAME not in pinecone.list_indexes():
-        pinecone.create_index(PINECONE_INDEX_NAME, dimension=1536)  # 1536 is the dimension for OpenAI's ada-002 model
-    
+    # Use the existing index
     index = pinecone.Index(PINECONE_INDEX_NAME)
     
-    # Create namespaces if they don't exist
+    # Get existing namespaces
     existing_namespaces = index.describe_index_stats()['namespaces']
     
+    # Create attendance namespace if it doesn't exist
     if ATTENDANCE_NAMESPACE not in existing_namespaces:
-        # Create attendance namespace by inserting a dummy vector
         index.upsert(vectors=[("dummy_attendance", [0]*1536, {"dummy": "attendance"})], namespace=ATTENDANCE_NAMESPACE)
+        st.success(f"Created {ATTENDANCE_NAMESPACE} namespace")
     
+    # Create leave namespace if it doesn't exist
     if LEAVE_NAMESPACE not in existing_namespaces:
-        # Create leave namespace by inserting a dummy vector
         index.upsert(vectors=[("dummy_leave", [0]*1536, {"dummy": "leave"})], namespace=LEAVE_NAMESPACE)
+        st.success(f"Created {LEAVE_NAMESPACE} namespace")
     
     pinecone_initialized = True
+    st.success("Connected to Pinecone and initialized namespaces successfully")
 except Exception as e:
-    error_message = str(e)
-    if "You've reach the max pod-based indexes allowed" in error_message:
-        st.error("Error: You've reached the maximum number of indexes allowed in your current Pinecone plan. Please upgrade your plan to create more indexes.")
-    else:
-        st.error(f"Error connecting to Pinecone: {error_message}")
+    st.error(f"Error connecting to Pinecone: {str(e)}")
 
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
