@@ -1,7 +1,7 @@
 import streamlit as st
 import pinecone
 from datetime import datetime, date, timedelta
-import openai
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import numpy as np
@@ -14,21 +14,21 @@ try:
     pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
     index = pinecone.Index(os.getenv("PINECONE_INDEX_NAME"))
 except Exception as e:
-    st.error("Error connecting to Pinecone. Please check your API key and index name.")
+    st.error(f"Error connecting to Pinecone: {str(e)}")
 
 # Initialize OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def create_embedding_fallback(text):
     return np.random.rand(1536).tolist()
 
 def create_embedding(text):
     try:
-        response = openai.Embedding.create(
-            input=text,
-            model="text-embedding-ada-002"
+        response = client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=text
         )
-        return response['data'][0]['embedding']
+        return response.data[0].embedding
     except Exception as e:
         print(f"OpenAI API error in create_embedding: {str(e)}")
         return create_embedding_fallback(text)
@@ -37,33 +37,46 @@ def store_in_pinecone(data, vector, namespace):
     try:
         index.upsert(vectors=[(str(data['timestamp']), vector, data)], namespace=namespace)
     except Exception as e:
-        st.error("Error storing data. Please try again later.")
+        st.error(f"Error storing data: {str(e)}")
 
 def query_gpt(prompt):
     try:
-        response = openai.Completion.create(
+        response = client.completions.create(
             model="gpt-4o-mini",
             prompt=prompt,
             max_tokens=100
         )
         return response.choices[0].text.strip()
     except Exception as e:
-        return "Unable to generate analysis at this time."
+        return f"Unable to generate analysis: {str(e)}"
 
-def get_attendance_for_date(date, namespace="attendance"):
+def parse_date(date_string):
+    if date_string is None:
+        return None
     try:
-        query_vector = create_embedding(f"Attendance on {date}")
+        return datetime.strptime(date_string, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+def get_attendance_for_date(selected_date, namespace="attendance"):
+    try:
+        query_vector = create_embedding(f"Attendance on {selected_date}")
         results = index.query(vector=query_vector, top_k=10, namespace=namespace, include_metadata=True)
-        return [r['metadata'] for r in results['matches'] if r['metadata']['entry_date'] == date.isoformat()]
+        return [r['metadata'] for r in results['matches'] if parse_date(r['metadata'].get('entry_date')) == selected_date]
     except Exception as e:
         st.error(f"Error retrieving attendance data: {str(e)}")
         return []
 
 def calculate_working_hours(entry_time, exit_time):
-    entry = datetime.strptime(entry_time, "%H:%M:%S")
-    exit = datetime.strptime(exit_time, "%H:%M:%S")
-    duration = exit - entry
-    return duration.total_seconds() / 3600  # Convert to hours
+    if entry_time is None or exit_time is None:
+        return 0
+    try:
+        entry = datetime.strptime(entry_time, "%H:%M:%S")
+        exit = datetime.strptime(exit_time, "%H:%M:%S")
+        duration = exit - entry
+        return max(0, duration.total_seconds() / 3600)  # Convert to hours, ensure non-negative
+    except ValueError:
+        return 0
 
 def main():
     st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
@@ -86,10 +99,10 @@ def main():
             entry_date = st.date_input("📆 Date", date.today())
             entry_time = st.time_input("🕒 Entry Time")
         
-        exit_time = st.time_input("🕒 Exit Time", value=None)
+        exit_time = st.time_input("🕒 Exit Time")
         
         if st.button("📝 Submit Attendance", use_container_width=True):
-            if name and email and exit_time:
+            if name and email and entry_time is not None and exit_time is not None:
                 timestamp = datetime.now().isoformat()
                 data = {
                     "timestamp": timestamp,
@@ -167,9 +180,11 @@ def main():
         if attendance_data:
             st.subheader(f"Attendance for {view_date}")
             for entry in attendance_data:
-                working_hours = calculate_working_hours(entry['entry_time'], entry['exit_time'])
-                st.write(f"👤 {entry['name']} ({entry['email']})")
-                st.write(f"🕒 Entry: {entry['entry_time']}, Exit: {entry['exit_time']}")
+                entry_time = entry.get('entry_time')
+                exit_time = entry.get('exit_time')
+                working_hours = calculate_working_hours(entry_time, exit_time)
+                st.write(f"👤 {entry.get('name', 'N/A')} ({entry.get('email', 'N/A')})")
+                st.write(f"🕒 Entry: {entry_time or 'N/A'}, Exit: {exit_time or 'N/A'}")
                 st.write(f"⏱️ Total hours worked: {working_hours:.2f}")
                 st.write("---")
         else:
