@@ -19,9 +19,6 @@ except Exception as e:
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def create_embedding_fallback(text):
-    return np.random.rand(1536).tolist()
-
 def create_embedding(text):
     try:
         response = client.embeddings.create(
@@ -30,63 +27,40 @@ def create_embedding(text):
         )
         return response.data[0].embedding
     except Exception as e:
-        print(f"OpenAI API error in create_embedding: {str(e)}")
-        return create_embedding_fallback(text)
+        st.error(f"Error creating embedding: {str(e)}")
+        return None
 
 def store_in_pinecone(data, vector, namespace):
     try:
-        index.upsert(vectors=[(str(data['timestamp']), vector, data)], namespace=namespace)
+        # Convert all values to strings to avoid type issues
+        string_data = {k: str(v) if v is not None else "" for k, v in data.items()}
+        index.upsert(vectors=[(string_data['timestamp'], vector, string_data)], namespace=namespace)
+        return True
     except Exception as e:
-        st.error(f"Error storing data: {str(e)}")
+        st.error(f"Error storing data in Pinecone: {str(e)}")
+        return False
 
 def query_gpt(prompt):
     try:
-        response = client.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
-            prompt=prompt,
-            max_tokens=100
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant analyzing attendance and leave data."},
+                {"role": "user", "content": prompt}
+            ]
         )
-        return response.choices[0].text.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Unable to generate analysis: {str(e)}"
 
-def parse_date(date_string):
-    if not isinstance(date_string, str):
-        return None
-    try:
-        return datetime.strptime(date_string, "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-def parse_time(time_string):
-    if not isinstance(time_string, str):
-        return None
-    try:
-        return datetime.strptime(time_string, "%H:%M:%S").time()
-    except ValueError:
-        return None
-
-def get_attendance_for_date(selected_date, namespace="attendance"):
-    try:
-        query_vector = create_embedding(f"Attendance on {selected_date}")
-        results = index.query(vector=query_vector, top_k=10, namespace=namespace, include_metadata=True)
-        filtered_results = []
-        for r in results['matches']:
-            entry_date = parse_date(r['metadata'].get('entry_date'))
-            if entry_date == selected_date:
-                filtered_results.append(r['metadata'])
-        return filtered_results
-    except Exception as e:
-        st.error(f"Error retrieving attendance data: {str(e)}")
-        return []
-
 def calculate_working_hours(entry_time, exit_time):
-    entry = parse_time(entry_time)
-    exit = parse_time(exit_time)
-    if entry is None or exit is None:
+    try:
+        entry = datetime.strptime(entry_time, "%H:%M:%S")
+        exit = datetime.strptime(exit_time, "%H:%M:%S")
+        duration = exit - entry
+        return max(0, duration.total_seconds() / 3600)  # Convert to hours, ensure non-negative
+    except ValueError:
         return 0
-    duration = datetime.combine(date.today(), exit) - datetime.combine(date.today(), entry)
-    return max(0, duration.total_seconds() / 3600)  # Convert to hours, ensure non-negative
 
 def main():
     st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
@@ -113,28 +87,37 @@ def main():
         
         if st.button("📝 Submit Attendance", use_container_width=True):
             if name and email and entry_time and exit_time:
-                timestamp = datetime.now().isoformat()
-                data = {
-                    "timestamp": timestamp,
-                    "name": name,
-                    "email": email,
-                    "entry_date": entry_date.isoformat(),
-                    "entry_time": entry_time.isoformat(),
-                    "exit_time": exit_time.isoformat()
-                }
-                
-                text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time} {exit_time}"
-                vector = create_embedding(text_to_embed)
-                store_in_pinecone(data, vector, namespace="attendance")
-                
-                working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
-                
-                prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
-                analysis = query_gpt(prompt)
-                
-                st.success("✅ Attendance recorded successfully!")
-                st.info(f"🕒 Total hours worked: {working_hours:.2f}")
-                st.info("🤖 GPT-4o-mini Analysis: " + analysis)
+                with st.spinner("Processing attendance data..."):
+                    timestamp = datetime.now().isoformat()
+                    data = {
+                        "timestamp": timestamp,
+                        "name": name,
+                        "email": email,
+                        "entry_date": entry_date.isoformat(),
+                        "entry_time": entry_time.isoformat(),
+                        "exit_time": exit_time.isoformat()
+                    }
+                    
+                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time} {exit_time}"
+                    st.info("Creating embedding...")
+                    vector = create_embedding(text_to_embed)
+                    
+                    if vector:
+                        st.info("Storing data in Pinecone...")
+                        if store_in_pinecone(data, vector, namespace="attendance"):
+                            working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
+                            
+                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
+                            st.info("Generating analysis...")
+                            analysis = query_gpt(prompt)
+                            
+                            st.success("✅ Attendance recorded successfully!")
+                            st.info(f"🕒 Total hours worked: {working_hours:.2f}")
+                            st.info("🤖 GPT-4 Analysis: " + analysis)
+                        else:
+                            st.error("Failed to store data in Pinecone.")
+                    else:
+                        st.error("Failed to create embedding.")
             else:
                 st.error("❌ Please fill in all required fields.")
 
@@ -157,27 +140,36 @@ def main():
         
         if st.button("📨 Submit Leave Request", use_container_width=True):
             if name and email and purpose:
-                timestamp = datetime.now().isoformat()
-                data = {
-                    "timestamp": timestamp,
-                    "name": name,
-                    "email": email,
-                    "leave_from": leave_from.isoformat(),
-                    "leave_to": leave_to.isoformat(),
-                    "leave_type": leave_type,
-                    "purpose": purpose,
-                    "permitted_by": permitted_by
-                }
-                
-                text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose}"
-                vector = create_embedding(text_to_embed)
-                store_in_pinecone(data, vector, namespace="leave")
-                
-                prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
-                analysis = query_gpt(prompt)
-                
-                st.success("✅ Leave request submitted successfully!")
-                st.info("🤖 GPT-4o-mini Analysis: " + analysis)
+                with st.spinner("Processing leave request..."):
+                    timestamp = datetime.now().isoformat()
+                    data = {
+                        "timestamp": timestamp,
+                        "name": name,
+                        "email": email,
+                        "leave_from": leave_from.isoformat(),
+                        "leave_to": leave_to.isoformat(),
+                        "leave_type": leave_type,
+                        "purpose": purpose,
+                        "permitted_by": permitted_by
+                    }
+                    
+                    text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose}"
+                    st.info("Creating embedding...")
+                    vector = create_embedding(text_to_embed)
+                    
+                    if vector:
+                        st.info("Storing data in Pinecone...")
+                        if store_in_pinecone(data, vector, namespace="leave"):
+                            prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
+                            st.info("Generating analysis...")
+                            analysis = query_gpt(prompt)
+                            
+                            st.success("✅ Leave request submitted successfully!")
+                            st.info("🤖 GPT-4 Analysis: " + analysis)
+                        else:
+                            st.error("Failed to store data in Pinecone.")
+                    else:
+                        st.error("Failed to create embedding.")
             else:
                 st.error("❌ Please fill in all required fields.")
 
@@ -185,20 +177,27 @@ def main():
         st.header("📊 View Attendance")
         
         view_date = st.date_input("📆 Select Date", date.today())
-        attendance_data = get_attendance_for_date(view_date)
-        
-        if attendance_data:
-            st.subheader(f"Attendance for {view_date}")
-            for entry in attendance_data:
-                entry_time = entry.get('entry_time')
-                exit_time = entry.get('exit_time')
-                working_hours = calculate_working_hours(entry_time, exit_time)
-                st.write(f"👤 {entry.get('name', 'N/A')} ({entry.get('email', 'N/A')})")
-                st.write(f"🕒 Entry: {entry_time or 'N/A'}, Exit: {exit_time or 'N/A'}")
-                st.write(f"⏱️ Total hours worked: {working_hours:.2f}")
-                st.write("---")
-        else:
-            st.info("No attendance data found for the selected date.")
+        if st.button("View Attendance"):
+            with st.spinner("Fetching attendance data..."):
+                query_vector = create_embedding(f"Attendance on {view_date}")
+                if query_vector:
+                    results = index.query(vector=query_vector, top_k=10, namespace="attendance", include_metadata=True)
+                    attendance_data = [r['metadata'] for r in results['matches'] if r['metadata'].get('entry_date') == view_date.isoformat()]
+                    
+                    if attendance_data:
+                        st.subheader(f"Attendance for {view_date}")
+                        for entry in attendance_data:
+                            entry_time = entry.get('entry_time', '')
+                            exit_time = entry.get('exit_time', '')
+                            working_hours = calculate_working_hours(entry_time, exit_time)
+                            st.write(f"👤 {entry.get('name', 'N/A')} ({entry.get('email', 'N/A')})")
+                            st.write(f"🕒 Entry: {entry_time or 'N/A'}, Exit: {exit_time or 'N/A'}")
+                            st.write(f"⏱️ Total hours worked: {working_hours:.2f}")
+                            st.write("---")
+                    else:
+                        st.info("No attendance data found for the selected date.")
+                else:
+                    st.error("Failed to create query embedding.")
 
 if __name__ == "__main__":
     main()
