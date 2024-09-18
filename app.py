@@ -9,12 +9,18 @@ import numpy as np
 # Load environment variables
 load_dotenv()
 
+# Constants
+PINECONE_INDEX_NAME = "leave-buddy-index"
+ATTENDANCE_NAMESPACE = "attendance_data"
+LEAVE_NAMESPACE = "leave_data"
+
 # Initialize Pinecone
 try:
     pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
-    index = pinecone.Index(os.getenv("PINECONE_INDEX_NAME"))
+    index = pinecone.Index(PINECONE_INDEX_NAME)
 except Exception as e:
     st.error(f"Error connecting to Pinecone: {str(e)}")
+    index = None
 
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -104,7 +110,7 @@ def main():
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
-                        if store_in_pinecone(data, vector, namespace="attendance"):
+                        if store_in_pinecone(data, vector, namespace=ATTENDANCE_NAMESPACE):
                             working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
                             
                             prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
@@ -159,7 +165,7 @@ def main():
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
-                        if store_in_pinecone(data, vector, namespace="leave"):
+                        if store_in_pinecone(data, vector, namespace=LEAVE_NAMESPACE):
                             prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
                             st.info("Generating analysis...")
                             analysis = query_gpt(prompt)
@@ -173,7 +179,7 @@ def main():
             else:
                 st.error("❌ Please fill in all required fields.")
 
-   elif choice == "📊 View Attendance":
+    elif choice == "📊 View Attendance":
         st.header("📊 View Attendance")
         
         view_date = st.date_input("📆 Select Date", date.today())
@@ -188,7 +194,7 @@ def main():
                             results = index.query(
                                 vector=query_vector,
                                 top_k=10,
-                                namespace="attendance",
+                                namespace=ATTENDANCE_NAMESPACE,
                                 include_metadata=True
                             )
                             attendance_data = [r['metadata'] for r in results['matches'] if r['metadata'].get('entry_date') == view_date.isoformat()]
@@ -210,6 +216,6 @@ def main():
                         st.error("Please check your Pinecone configuration and ensure the index is properly set up.")
                 else:
                     st.error("Failed to create query embedding. Please try again.")
-                    
+
 if __name__ == "__main__":
     main()
