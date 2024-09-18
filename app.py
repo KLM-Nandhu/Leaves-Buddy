@@ -173,7 +173,7 @@ def main():
             else:
                 st.error("❌ Please fill in all required fields.")
 
-    elif choice == "📊 View Attendance":
+   elif choice == "📊 View Attendance":
         st.header("📊 View Attendance")
         
         view_date = st.date_input("📆 Select Date", date.today())
@@ -181,23 +181,35 @@ def main():
             with st.spinner("Fetching attendance data..."):
                 query_vector = create_embedding(f"Attendance on {view_date}")
                 if query_vector:
-                    results = index.query(vector=query_vector, top_k=10, namespace="attendance", include_metadata=True)
-                    attendance_data = [r['metadata'] for r in results['matches'] if r['metadata'].get('entry_date') == view_date.isoformat()]
-                    
-                    if attendance_data:
-                        st.subheader(f"Attendance for {view_date}")
-                        for entry in attendance_data:
-                            entry_time = entry.get('entry_time', '')
-                            exit_time = entry.get('exit_time', '')
-                            working_hours = calculate_working_hours(entry_time, exit_time)
-                            st.write(f"👤 {entry.get('name', 'N/A')} ({entry.get('email', 'N/A')})")
-                            st.write(f"🕒 Entry: {entry_time or 'N/A'}, Exit: {exit_time or 'N/A'}")
-                            st.write(f"⏱️ Total hours worked: {working_hours:.2f}")
-                            st.write("---")
-                    else:
-                        st.info("No attendance data found for the selected date.")
+                    try:
+                        if index is None:
+                            st.error("Pinecone index is not properly initialized. Please check your configuration.")
+                        else:
+                            results = index.query(
+                                vector=query_vector,
+                                top_k=10,
+                                namespace="attendance",
+                                include_metadata=True
+                            )
+                            attendance_data = [r['metadata'] for r in results['matches'] if r['metadata'].get('entry_date') == view_date.isoformat()]
+                            
+                            if attendance_data:
+                                st.subheader(f"Attendance for {view_date}")
+                                for entry in attendance_data:
+                                    entry_time = entry.get('entry_time', '')
+                                    exit_time = entry.get('exit_time', '')
+                                    working_hours = calculate_working_hours(entry_time, exit_time)
+                                    st.write(f"👤 {entry.get('name', 'N/A')} ({entry.get('email', 'N/A')})")
+                                    st.write(f"🕒 Entry: {entry_time or 'N/A'}, Exit: {exit_time or 'N/A'}")
+                                    st.write(f"⏱️ Total hours worked: {working_hours:.2f}")
+                                    st.write("---")
+                            else:
+                                st.info("No attendance data found for the selected date.")
+                    except Exception as e:
+                        st.error(f"An error occurred while querying Pinecone: {str(e)}")
+                        st.error("Please check your Pinecone configuration and ensure the index is properly set up.")
                 else:
-                    st.error("Failed to create query embedding.")
-
+                    st.error("Failed to create query embedding. Please try again.")
+                    
 if __name__ == "__main__":
     main()
