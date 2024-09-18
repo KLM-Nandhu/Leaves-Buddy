@@ -10,9 +10,7 @@ import numpy as np
 load_dotenv()
 
 # Constants
-PINECONE_INDEX_NAME = "excel-data"
-ATTENDANCE_NAMESPACE = "attendance_data_new"
-LEAVE_NAMESPACE = "leave_data_new"
+PINECONE_INDEX_NAME = "leave-buddy-index"
 
 # Initialize Pinecone
 pinecone_initialized = False
@@ -24,21 +22,8 @@ try:
     # Use the existing index
     index = pinecone.Index(PINECONE_INDEX_NAME)
     
-    # Get existing namespaces
-    existing_namespaces = index.describe_index_stats()['namespaces']
-    
-    # Create new attendance namespace
-    if ATTENDANCE_NAMESPACE not in existing_namespaces:
-        index.upsert(vectors=[("dummy_attendance", [0]*1536, {"dummy": "attendance"})], namespace=ATTENDANCE_NAMESPACE)
-        st.success(f"Created new namespace: {ATTENDANCE_NAMESPACE}")
-    
-    # Create new leave namespace
-    if LEAVE_NAMESPACE not in existing_namespaces:
-        index.upsert(vectors=[("dummy_leave", [0]*1536, {"dummy": "leave"})], namespace=LEAVE_NAMESPACE)
-        st.success(f"Created new namespace: {LEAVE_NAMESPACE}")
-    
     pinecone_initialized = True
-    st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' and initialized new namespaces successfully")
+    st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' successfully")
 except Exception as e:
     st.error(f"Error connecting to Pinecone: {str(e)}")
 
@@ -56,14 +41,14 @@ def create_embedding(text):
         st.error(f"Error creating embedding: {str(e)}")
         return None
 
-def store_in_pinecone(data, vector, namespace):
+def store_in_pinecone(data, vector):
     if not pinecone_initialized:
         st.warning("Pinecone is not initialized. Data will not be stored.")
         return False
     try:
         # Convert all values to strings to avoid type issues
         string_data = {k: str(v) if v is not None else "" for k, v in data.items()}
-        index.upsert(vectors=[(string_data['timestamp'], vector, string_data)], namespace=namespace)
+        index.upsert(vectors=[(string_data['timestamp'], vector, string_data)])
         return True
     except Exception as e:
         st.error(f"Error storing data in Pinecone: {str(e)}")
@@ -123,6 +108,7 @@ def main():
                     timestamp = datetime.now().isoformat()
                     data = {
                         "timestamp": timestamp,
+                        "type": "attendance",
                         "name": name,
                         "email": email,
                         "entry_date": entry_date.isoformat(),
@@ -136,7 +122,7 @@ def main():
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
-                        if store_in_pinecone(data, vector, namespace=ATTENDANCE_NAMESPACE):
+                        if store_in_pinecone(data, vector):
                             working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
                             
                             prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
@@ -176,6 +162,7 @@ def main():
                     timestamp = datetime.now().isoformat()
                     data = {
                         "timestamp": timestamp,
+                        "type": "leave",
                         "name": name,
                         "email": email,
                         "leave_from": leave_from.isoformat(),
@@ -191,7 +178,7 @@ def main():
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
-                        if store_in_pinecone(data, vector, namespace=LEAVE_NAMESPACE):
+                        if store_in_pinecone(data, vector):
                             prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
                             st.info("Generating analysis...")
                             analysis = query_gpt(prompt)
@@ -220,10 +207,9 @@ def main():
                             results = index.query(
                                 vector=query_vector,
                                 top_k=10,
-                                namespace=ATTENDANCE_NAMESPACE,
                                 include_metadata=True
                             )
-                            attendance_data = [r['metadata'] for r in results['matches'] if r['metadata'].get('entry_date') == view_date.isoformat()]
+                            attendance_data = [r['metadata'] for r in results['matches'] if r['metadata'].get('type') == 'attendance' and r['metadata'].get('entry_date') == view_date.isoformat()]
                             
                             if attendance_data:
                                 st.subheader(f"Attendance for {view_date}")
