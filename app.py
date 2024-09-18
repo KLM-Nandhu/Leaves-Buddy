@@ -1,6 +1,6 @@
 import streamlit as st
 from pinecone import Pinecone
-from datetime import datetime, date, timedelta
+from datetime 
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
