@@ -73,7 +73,7 @@ def store_in_pinecone(data, vector):
 def query_gpt(prompt):
     try:
         response = client.chat_completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant analyzing attendance and leave data."},
                 {"role": "user", "content": prompt}
@@ -131,7 +131,7 @@ def download_to_excel(data, employee_name):
     )
 
 def main():
-    st.title("🗓️ Leave Buddy: Attendance and Leave Monitoring System")
+    st.title("🗓️ Leave Buddy")
 
     # Initialize Pinecone connection
     if not pinecone_initialized:
