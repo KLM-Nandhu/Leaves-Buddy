@@ -10,7 +10,7 @@ import numpy as np
 load_dotenv()
 
 # Constants
-PINECONE_INDEX_NAME = "leave-buddy-index"
+PINECONE_INDEX_NAME = "excel-data"
 ATTENDANCE_NAMESPACE = "attendance_data_new"
 LEAVE_NAMESPACE = "leave_data_new"
 
