@@ -1,10 +1,12 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import openai
 from typing import Dict, List
 import os
 from dotenv import load_dotenv
 import pinecone
+import pandas as pd
+import io
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +27,14 @@ USERS: Dict[str, str] = {
     "Prateeka": "prateeka@klmsolutions.in",
     "Akshara Shri": "akshara@klmsolutions.in"
 }
+
+def check_pinecone_connection() -> bool:
+    try:
+        index.describe_index_stats()
+        return True
+    except Exception as e:
+        st.error(f"Failed to connect to Pinecone: {str(e)}")
+        return False
 
 def get_embedding(text: str) -> List[float]:
     response = openai.Embedding.create(
@@ -53,14 +63,9 @@ def store_data(data: Dict[str, str], data_type: str):
     embedding = get_embedding(llm_processed)
     
     unique_id = f"{data_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    index.upsert(vectors=[(unique_id, embedding, {"text": llm_processed})])
+    index.upsert(vectors=[(unique_id, embedding, {"text": llm_processed, "original_data": data, "type": data_type})])
     
     return llm_processed
-
-def query_data(query: str, top_k: int = 5) -> List[Dict]:
-    query_embedding = get_embedding(query)
-    results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
-    return results.matches
 
 def attendance_page():
     st.title("Daily Attendance")
@@ -122,29 +127,77 @@ def leave_page():
         st.success("Leave application submitted successfully!")
         st.info(f"LLM Processing Result: {llm_response}")
 
-def query_page():
-    st.title("Query Attendance and Leave Data")
-    query = st.text_input("Enter your query")
-    if st.button("Search"):
-        results = query_data(query)
-        for i, result in enumerate(results, 1):
-            st.subheader(f"Result {i}")
-            st.write(result['metadata']['text'])
-            st.write(f"Similarity: {result['score']}")
+def download_page():
+    st.title("Download Attendance and Leave Data")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        from_date = st.date_input("From Date", value=datetime.now() - timedelta(days=30))
+    with col2:
+        to_date = st.date_input("To Date", value=datetime.now())
+    with col3:
+        staff_options = ["All"] + list(USERS.keys())
+        selected_staff = st.selectbox("Select Staff", staff_options)
+
+    if st.button("Download Excel"):
+        # Query Pinecone for data within the date range
+        query_embedding = get_embedding(f"Data from {from_date} to {to_date}")
+        results = index.query(vector=query_embedding, top_k=10000, include_metadata=True)
+
+        # Process and filter the results
+        data = []
+        for match in results.matches:
+            original_data = match.metadata.get('original_data', {})
+            record_date = original_data.get('date') or original_data.get('start_date')
+            if record_date:
+                record_date = datetime.strptime(record_date, "%Y-%m-%d").date()
+                if from_date <= record_date <= to_date:
+                    if selected_staff == "All" or original_data.get('name') == selected_staff:
+                        data.append(original_data)
+
+        # Create DataFrame
+        df = pd.DataFrame(data)
+
+        # Create Excel file
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Data')
+
+        # Offer download
+        st.download_button(
+            label="Download Excel file",
+            data=output.getvalue(),
+            file_name=f"attendance_leave_data_{from_date}_to_{to_date}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # Store download record in Pinecone
+        download_data = {
+            "action": "download",
+            "from_date": str(from_date),
+            "to_date": str(to_date),
+            "staff": selected_staff,
+            "timestamp": str(datetime.now())
+        }
+        store_data(download_data, "download_record")
 
 def main():
     st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
     
+    if not check_pinecone_connection():
+        st.error("Failed to connect to Pinecone. Please check your API key and try again.")
+        return
+
     st.sidebar.title("Leave Buddy")
     st.sidebar.image("https://via.placeholder.com/150", use_column_width=True)
-    page = st.sidebar.radio("Navigation", ["Attendance", "Leave", "Query"])
+    page = st.sidebar.radio("Navigation", ["Attendance", "Leave", "Download"])
     
     if page == "Attendance":
         attendance_page()
     elif page == "Leave":
         leave_page()
-    elif page == "Query":
-        query_page()
+    elif page == "Download":
+        download_page()
 
 if __name__ == "__main__":
     main()
