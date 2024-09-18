@@ -22,10 +22,10 @@ def create_embedding(text):
 def store_in_pinecone(data, vector, namespace):
     index.upsert(vectors=[(str(data['timestamp']), vector, data)], namespace=namespace)
 
-# Function to query GPT-4o-mini
+# Function to query GPT-4
 def query_gpt(prompt):
     response = openai.Completion.create(
-        model="gpt-4o-mini",
+        model="gpt-4",
         prompt=prompt,
         max_tokens=100
     )
@@ -69,12 +69,12 @@ def main():
                 vector = create_embedding(text_to_embed)
                 store_in_pinecone(data, vector, namespace="attendance")
                 
-                # Query GPT-4o-mini
+                # Query GPT-4
                 prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time}"
                 analysis = query_gpt(prompt)
                 
                 st.success("✅ Attendance recorded successfully!")
-                st.info("🤖 GPT-4o-mini Analysis: " + analysis)
+                st.info("🤖 GPT-4 Analysis: " + analysis)
             else:
                 st.error("❌ Please fill in all required fields.")
 
@@ -114,12 +114,12 @@ def main():
                 vector = create_embedding(text_to_embed)
                 store_in_pinecone(data, vector, namespace="leave")
                 
-                # Query GPT-4o-mini
+                # Query GPT-4
                 prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
                 analysis = query_gpt(prompt)
                 
                 st.success("✅ Leave request submitted successfully!")
-                st.info("🤖 GPT-4o-mini Analysis: " + analysis)
+                st.info("🤖 GPT-4 Analysis: " + analysis)
             else:
                 st.error("❌ Please fill in all required fields.")
 
