@@ -1,5 +1,5 @@
 import streamlit as st
-import pinecone
+from pinecone import Pinecone, ServerlessSpec 
 from datetime import datetime, date, timedelta
 from openai import OpenAI
 import os
@@ -27,20 +27,25 @@ NAME_EMAIL_MAPPING = {
 
 # Initialize Pinecone
 pinecone_initialized = False
+pc = None
 index = None
 
-def init_pinecone():
-    global pinecone_initialized, index
+def init_pinecone(api_key, cloud, region):
+    global pinecone_initialized, pc, index
     try:
-        pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
-        index = pinecone.Index(PINECONE_INDEX_NAME)
+        pc = Pinecone(api_key=api_key)
+        index = pc.Index(
+            PINECONE_INDEX_NAME,
+            host=f"https://{PINECONE_INDEX_NAME}-{cloud}.svc.{region}.pinecone.io"
+        )
         # Test the connection
         index.describe_index_stats()
         pinecone_initialized = True
-        st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' successfully")
+        st.success(f"Connected to Pinecone serverless index '{PINECONE_INDEX_NAME}' successfully")
+        return True
     except Exception as e:
         st.error(f"Error connecting to Pinecone: {str(e)}")
-        st.error("Please check your Pinecone API key and index name in the .env file.")
+        return False
 
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -93,8 +98,22 @@ def calculate_working_hours(entry_time, exit_time):
 def main():
     st.title("🗓️ Leave Buddy: Attendance and Leave Monitoring System")
 
+    # Pinecone connection settings
+    with st.expander("Pinecone Connection Settings"):
+        pinecone_api_key = st.text_input("Pinecone API Key", value=os.getenv("PINECONE_API_KEY", ""), type="password")
+        st.info(f"Using Pinecone Index: {PINECONE_INDEX_NAME}")
+        pinecone_cloud = st.selectbox("Pinecone Cloud", ["gcp", "aws", "azure"])
+        pinecone_region = st.text_input("Pinecone Region", value="us-west1")
+        
+        if st.button("Test Pinecone Connection"):
+            if init_pinecone(pinecone_api_key, pinecone_cloud, pinecone_region):
+                st.success("Pinecone connection successful!")
+            else:
+                st.error("Failed to connect to Pinecone. Please check your settings.")
+
     if not pinecone_initialized:
-        st.warning("⚠️ Pinecone is not initialized. Some features may not work.")
+        st.warning("⚠️ Pinecone is not initialized. Please configure the connection settings above.")
+        return
 
     menu = ["📅 Daily Attendance", "🏖️ Leave Request", "📊 View Attendance"]
     choice = st.sidebar.radio("Select Option", menu)
@@ -243,5 +262,4 @@ def main():
                         st.error("Failed to create query embedding. Please try again.")
 
 if __name__ == "__main__":
-    init_pinecone()
     main()
