@@ -58,28 +58,6 @@ def create_embedding(text):
         st.error(f"Error creating embedding: {str(e)}")
         return None
 
-def query_gpt(prompt):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant analyzing attendance and leave data."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response.choices[0].message['content'].strip()
-    except Exception as e:
-        return f"Unable to generate analysis: {str(e)}"
-
-def calculate_working_hours(entry_time, exit_time):
-    try:
-        entry = datetime.strptime(entry_time, "%H:%M:%S")
-        exit = datetime.strptime(exit_time, "%H:%M:%S")
-        duration = exit - entry
-        return max(0, duration.total_seconds() / 3600)
-    except ValueError:
-        return 0
-
 def store_in_pinecone(data, vector):
     if not pinecone_initialized:
         st.warning("Pinecone is not initialized. Data will not be stored.")
@@ -91,6 +69,28 @@ def store_in_pinecone(data, vector):
     except Exception as e:
         st.error(f"Error storing data in Pinecone: {str(e)}")
         return False
+
+def query_gpt(prompt):
+    try:
+        response = client.chat_completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant analyzing attendance and leave data."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.choices[0].message["content"].strip()
+    except Exception as e:
+        return f"Unable to generate analysis: {str(e)}"
+
+def calculate_working_hours(entry_time, exit_time):
+    try:
+        entry = datetime.strptime(entry_time, "%H:%M:%S")
+        exit = datetime.strptime(exit_time, "%H:%M:%S")
+        duration = exit - entry
+        return max(0, duration.total_seconds() / 3600)
+    except ValueError:
+        return 0
 
 def fetch_attendance(employee_name, from_date, to_date):
     try:
@@ -145,7 +145,117 @@ def main():
     menu = ["📅 Daily Attendance", "🏖️ Leave Request", "📊 View Attendance"]
     choice = st.sidebar.radio("Select Option", menu)
 
-    if choice == "📊 View Attendance":
+    if choice == "📅 Daily Attendance":
+        st.header("📅 Daily Attendance")
+
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            name = st.selectbox("👤 Employee Name", list(NAME_EMAIL_MAPPING.keys()))
+            email = NAME_EMAIL_MAPPING[name]
+            st.text_input("📧 Email ID", value=email, disabled=True)
+        
+        with col2:
+            entry_date = st.date_input("📆 Date", date.today())
+            entry_time = st.time_input("🕒 Entry Time")
+        
+        exit_time = st.time_input("🕒 Exit Time")
+        
+        if st.button("📝 Submit Attendance", use_container_width=True):
+            if name and email and entry_time and exit_time:
+                with st.spinner("Processing attendance data..."):
+                    timestamp = datetime.now().isoformat()
+                    data = {
+                        "timestamp": timestamp,
+                        "type": "attendance",
+                        "name": name,
+                        "email": email,
+                        "entry_date": entry_date.isoformat(),
+                        "entry_time": entry_time.isoformat(),
+                        "exit_time": exit_time.isoformat()
+                    }
+                    
+                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time} {exit_time}"
+                    st.info("Creating embedding...")
+                    vector = create_embedding(text_to_embed)
+                    
+                    if vector:
+                        st.info("Storing data in Pinecone...")
+                        if store_in_pinecone(data, vector):
+                            working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
+                            
+                            # GPT-4 Analysis
+                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
+                            st.info("Generating analysis with GPT-4...")
+                            analysis = query_gpt(prompt)
+                            
+                            st.success("✅ Attendance recorded successfully!")
+                            st.info(f"🕒 Total hours worked: {working_hours:.2f}")
+                            st.info("🤖 GPT-4 Analysis: " + analysis)
+                        else:
+                            st.error("Failed to store data in Pinecone.")
+                    else:
+                        st.error("Failed to create embedding.")
+            else:
+                st.error("❌ Please fill in all required fields.")
+
+    elif choice == "🏖️ Leave Request":
+        st.header("🏖️ Leave Request")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            name = st.selectbox("👤 Employee Name", list(NAME_EMAIL_MAPPING.keys()))
+            email = NAME_EMAIL_MAPPING[name]
+            st.text_input("📧 Email ID", value=email, disabled=True)
+            leave_from = st.date_input("📅 Leave From")
+        
+        with col2:
+            leave_to = st.date_input("📅 Leave To")
+            leave_type = st.selectbox("🏷️ Leave Type", ["Annual Leave", "Sick Leave", "Personal Leave", "Other"])
+            permitted_by = st.text_input("👨‍💼 Permitted By")
+        
+        purpose = st.text_area("📝 Purpose of Leave")
+        
+        if st.button("📨 Submit Leave Request", use_container_width=True):
+            if name and email and purpose:
+                with st.spinner("Processing leave request..."):
+                    timestamp = datetime.now().isoformat()
+                    data = {
+                        "timestamp": timestamp,
+                        "type": "leave",
+                        "name": name,
+                        "email": email,
+                        "leave_from": leave_from.isoformat(),
+                        "leave_to": leave_to.isoformat(),
+                        "leave_type": leave_type,
+                        "purpose": purpose,
+                        "permitted_by": permitted_by
+                    }
+                    
+                    text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose}"
+                    st.info("Creating embedding...")
+                    vector = create_embedding(text_to_embed)
+                    
+                    if vector:
+                        st.info("Storing data in Pinecone...")
+                        if store_in_pinecone(data, vector):
+                            
+                            # GPT-4 Analysis
+                            prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
+                            st.info("Generating analysis with GPT-4...")
+                            analysis = query_gpt(prompt)
+                            
+                            st.success("✅ Leave request submitted successfully!")
+                            st.info("🤖 GPT-4 Analysis: " + analysis)
+                        else:
+                            st.error("Failed to store data in Pinecone.")
+                    else:
+                        st.error("Failed to create embedding.")
+            else:
+                st.error("❌ Please fill in all required fields.")
+
+    elif choice == "📊 View Attendance":
         st.header("📊 View Attendance")
 
         # Date Range Selection
