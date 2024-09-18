@@ -8,7 +8,7 @@ import pandas as pd
 import io
 
 # Set page config at the very beginning
-st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
+st.set_page_config(page_title="LEAVES-BUDDY", page_icon="🗓️", layout="wide")
 
 # Load environment variables
 load_dotenv()
@@ -131,7 +131,7 @@ def download_to_excel(data, employee_name):
     )
 
 def main():
-    st.title("🗓️ Leave Buddy")
+    st.title("🗓️ LEAVES-BUDDY")
 
     # Initialize Pinecone connection
     if not pinecone_initialized:
