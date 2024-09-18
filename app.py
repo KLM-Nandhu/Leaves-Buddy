@@ -85,8 +85,8 @@ def query_gpt(prompt):
 
 def calculate_working_hours(entry_time, exit_time):
     try:
-        entry = datetime.strptime(entry_time, "%I:%M %p")
-        exit = datetime.strptime(exit_time, "%I:%M %p")
+        entry = datetime.strptime(entry_time, "%H:%M:%S")
+        exit = datetime.strptime(exit_time, "%H:%M:%S")
         duration = exit - entry
         return max(0, duration.total_seconds() / 3600)
     except ValueError:
@@ -157,9 +157,9 @@ def main():
         
         with col2:
             entry_date = st.date_input("📆 Date", date.today())  # Calender opens on click
-            entry_time = st.time_input("🕒 Entry Time", datetime.now(), key="entry_time", format="h:mm A")  # 12-hour format with AM/PM
+            entry_time = st.time_input("🕒 Entry Time", datetime.now().time())  # 24-hour format
         
-        exit_time = st.time_input("🕒 Exit Time", datetime.now(), key="exit_time", format="h:mm A")  # 12-hour format with AM/PM
+        exit_time = st.time_input("🕒 Exit Time", datetime.now().time())  # 24-hour format
         
         if st.button("📝 Submit Attendance", use_container_width=True):
             if name and email and entry_time and exit_time:
@@ -171,21 +171,21 @@ def main():
                         "name": name,
                         "email": email,
                         "entry_date": entry_date.isoformat(),
-                        "entry_time": entry_time.strftime("%I:%M %p"),
-                        "exit_time": exit_time.strftime("%I:%M %p")
+                        "entry_time": entry_time.strftime("%H:%M:%S"),
+                        "exit_time": exit_time.strftime("%H:%M:%S")
                     }
                     
-                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time.strftime('%I:%M %p')} {exit_time.strftime('%I:%M %p')}"
+                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time.strftime('%H:%M:%S')} {exit_time.strftime('%H:%M:%S')}"
                     st.info("Creating embedding...")
                     vector = create_embedding(text_to_embed)
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
                         if store_in_pinecone(data, vector):
-                            working_hours = calculate_working_hours(entry_time.strftime("%I:%M %p"), exit_time.strftime("%I:%M %p"))
+                            working_hours = calculate_working_hours(entry_time.strftime("%H:%M:%S"), exit_time.strftime("%H:%M:%S"))
                             
                             # GPT-4 Analysis
-                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time.strftime('%I:%M %p')} and left at {exit_time.strftime('%I:%M %p')}, working for {working_hours:.2f} hours"
+                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time.strftime('%H:%M:%S')} and left at {exit_time.strftime('%H:%M:%S')}, working for {working_hours:.2f} hours"
                             st.info("Generating analysis with GPT-4...")
                             analysis = query_gpt(prompt)
                             
