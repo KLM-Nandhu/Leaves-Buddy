@@ -91,7 +91,7 @@ def calculate_working_hours(entry_time, exit_time):
         return 0
 
 def main():
-    st.title("🗓️ Leave Buddy: Attendance and Leave Monitoring System")
+    st.title("🗓️ Leave Buddy")
 
     # Initialize Pinecone connection
     if not pinecone_initialized:
