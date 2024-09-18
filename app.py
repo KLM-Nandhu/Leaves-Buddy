@@ -85,8 +85,8 @@ def query_gpt(prompt):
 
 def calculate_working_hours(entry_time, exit_time):
     try:
-        entry = datetime.strptime(entry_time, "%H:%M:%S")
-        exit = datetime.strptime(exit_time, "%H:%M:%S")
+        entry = datetime.strptime(entry_time, "%I:%M %p")  # For 12-hour format
+        exit = datetime.strptime(exit_time, "%I:%M %p")  # For 12-hour format
         duration = exit - entry
         return max(0, duration.total_seconds() / 3600)
     except ValueError:
@@ -105,7 +105,7 @@ def fetch_attendance(employee_name, from_date, to_date):
                 r['metadata'] for r in results['matches']
                 if r['metadata'].get('type') == 'attendance'
                 and from_date <= r['metadata'].get('entry_date', '') <= to_date
-                and r['metadata'].get('name') == employee_name
+                and (employee_name == "All" or r['metadata'].get('name') == employee_name)
             ]
             return attendance_data
         return []
@@ -157,9 +157,13 @@ def main():
         
         with col2:
             entry_date = st.date_input("📆 Date", date.today())  # Calendar opens on click
-            entry_time = st.time_input("🕒 Entry Time", datetime.now().time())  # Use .time() to get the time part
+            entry_time = st.time_input("🕒 Entry Time", datetime.now().time())  # 24-hour format
         
-        exit_time = st.time_input("🕒 Exit Time", datetime.now().time())  # Use .time() to get the time part
+        exit_time = st.time_input("🕒 Exit Time", datetime.now().time())  # 24-hour format
+        
+        # Convert to 12-hour format with AM/PM after submission
+        entry_time_12hr = datetime.strptime(entry_time.strftime("%H:%M:%S"), "%H:%M:%S").strftime("%I:%M %p")
+        exit_time_12hr = datetime.strptime(exit_time.strftime("%H:%M:%S"), "%H:%M:%S").strftime("%I:%M %p")
         
         if st.button("📝 Submit Attendance", use_container_width=True):
             if name and email and entry_time and exit_time:
@@ -171,21 +175,21 @@ def main():
                         "name": name,
                         "email": email,
                         "entry_date": entry_date.isoformat(),
-                        "entry_time": entry_time.strftime("%H:%M:%S"),
-                        "exit_time": exit_time.strftime("%H:%M:%S")
+                        "entry_time": entry_time_12hr,  # Store in 12-hour format with AM/PM
+                        "exit_time": exit_time_12hr  # Store in 12-hour format with AM/PM
                     }
                     
-                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time.strftime('%H:%M:%S')} {exit_time.strftime('%H:%M:%S')}"
+                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time_12hr} {exit_time_12hr}"
                     st.info("Creating embedding...")
                     vector = create_embedding(text_to_embed)
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
                         if store_in_pinecone(data, vector):
-                            working_hours = calculate_working_hours(entry_time.strftime("%H:%M:%S"), exit_time.strftime("%H:%M:%S"))
+                            working_hours = calculate_working_hours(entry_time_12hr, exit_time_12hr)
                             
                             # GPT-4 Analysis
-                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time.strftime('%H:%M:%S')} and left at {exit_time.strftime('%H:%M:%S')}, working for {working_hours:.2f} hours"
+                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time_12hr} and left at {exit_time_12hr}, working for {working_hours:.2f} hours"
                             st.info("Generating analysis with GPT-4...")
                             analysis = query_gpt(prompt)
                             
@@ -265,8 +269,8 @@ def main():
         with col2:
             to_date = st.date_input("📆 To", date.today())
 
-        # Employee Selection
-        employee_name = st.selectbox("👤 Select Employee", list(NAME_EMAIL_MAPPING.keys()))
+        # Employee Selection - "All" employees or specific employee
+        employee_name = st.selectbox("👤 Select Employee", ["All"] + list(NAME_EMAIL_MAPPING.keys()))
 
         # View and Download Buttons
         view_button, download_button = st.columns(2)
