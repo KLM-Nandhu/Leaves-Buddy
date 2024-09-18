@@ -11,8 +11,8 @@ load_dotenv()
 
 # Constants
 PINECONE_INDEX_NAME = "leave-buddy-index"
-ATTENDANCE_NAMESPACE = "attendance_data"
-LEAVE_NAMESPACE = "leave_data"
+ATTENDANCE_NAMESPACE = "attendance_data_new"
+LEAVE_NAMESPACE = "leave_data_new"
 
 # Initialize Pinecone
 pinecone_initialized = False
@@ -27,18 +27,18 @@ try:
     # Get existing namespaces
     existing_namespaces = index.describe_index_stats()['namespaces']
     
-    # Create attendance namespace if it doesn't exist
+    # Create new attendance namespace
     if ATTENDANCE_NAMESPACE not in existing_namespaces:
         index.upsert(vectors=[("dummy_attendance", [0]*1536, {"dummy": "attendance"})], namespace=ATTENDANCE_NAMESPACE)
-        st.success(f"Created {ATTENDANCE_NAMESPACE} namespace")
+        st.success(f"Created new namespace: {ATTENDANCE_NAMESPACE}")
     
-    # Create leave namespace if it doesn't exist
+    # Create new leave namespace
     if LEAVE_NAMESPACE not in existing_namespaces:
         index.upsert(vectors=[("dummy_leave", [0]*1536, {"dummy": "leave"})], namespace=LEAVE_NAMESPACE)
-        st.success(f"Created {LEAVE_NAMESPACE} namespace")
+        st.success(f"Created new namespace: {LEAVE_NAMESPACE}")
     
     pinecone_initialized = True
-    st.success("Connected to Pinecone and initialized namespaces successfully")
+    st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' and initialized new namespaces successfully")
 except Exception as e:
     st.error(f"Error connecting to Pinecone: {str(e)}")
 
