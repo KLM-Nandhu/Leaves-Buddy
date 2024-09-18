@@ -51,10 +51,18 @@ def query_gpt(prompt):
         return f"Unable to generate analysis: {str(e)}"
 
 def parse_date(date_string):
-    if date_string is None:
+    if not isinstance(date_string, str):
         return None
     try:
         return datetime.strptime(date_string, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+def parse_time(time_string):
+    if not isinstance(time_string, str):
+        return None
+    try:
+        return datetime.strptime(time_string, "%H:%M:%S").time()
     except ValueError:
         return None
 
@@ -62,21 +70,23 @@ def get_attendance_for_date(selected_date, namespace="attendance"):
     try:
         query_vector = create_embedding(f"Attendance on {selected_date}")
         results = index.query(vector=query_vector, top_k=10, namespace=namespace, include_metadata=True)
-        return [r['metadata'] for r in results['matches'] if parse_date(r['metadata'].get('entry_date')) == selected_date]
+        filtered_results = []
+        for r in results['matches']:
+            entry_date = parse_date(r['metadata'].get('entry_date'))
+            if entry_date == selected_date:
+                filtered_results.append(r['metadata'])
+        return filtered_results
     except Exception as e:
         st.error(f"Error retrieving attendance data: {str(e)}")
         return []
 
 def calculate_working_hours(entry_time, exit_time):
-    if entry_time is None or exit_time is None:
+    entry = parse_time(entry_time)
+    exit = parse_time(exit_time)
+    if entry is None or exit is None:
         return 0
-    try:
-        entry = datetime.strptime(entry_time, "%H:%M:%S")
-        exit = datetime.strptime(exit_time, "%H:%M:%S")
-        duration = exit - entry
-        return max(0, duration.total_seconds() / 3600)  # Convert to hours, ensure non-negative
-    except ValueError:
-        return 0
+    duration = datetime.combine(date.today(), exit) - datetime.combine(date.today(), entry)
+    return max(0, duration.total_seconds() / 3600)  # Convert to hours, ensure non-negative
 
 def main():
     st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
@@ -102,7 +112,7 @@ def main():
         exit_time = st.time_input("🕒 Exit Time")
         
         if st.button("📝 Submit Attendance", use_container_width=True):
-            if name and email and entry_time is not None and exit_time is not None:
+            if name and email and entry_time and exit_time:
                 timestamp = datetime.now().isoformat()
                 data = {
                     "timestamp": timestamp,
