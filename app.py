@@ -6,6 +6,9 @@ import os
 from dotenv import load_dotenv
 import numpy as np
 
+# Set page config at the very beginning
+st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
+
 # Load environment variables
 load_dotenv()
 
@@ -16,16 +19,15 @@ PINECONE_INDEX_NAME = "leave-buddy-index"
 pinecone_initialized = False
 index = None
 
-try:
-    pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
-    
-    # Use the existing index
-    index = pinecone.Index(PINECONE_INDEX_NAME)
-    
-    pinecone_initialized = True
-    st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' successfully")
-except Exception as e:
-    st.error(f"Error connecting to Pinecone: {str(e)}")
+def init_pinecone():
+    global pinecone_initialized, index
+    try:
+        pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
+        index = pinecone.Index(PINECONE_INDEX_NAME)
+        pinecone_initialized = True
+        st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' successfully")
+    except Exception as e:
+        st.error(f"Error connecting to Pinecone: {str(e)}")
 
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -46,7 +48,6 @@ def store_in_pinecone(data, vector):
         st.warning("Pinecone is not initialized. Data will not be stored.")
         return False
     try:
-        # Convert all values to strings to avoid type issues
         string_data = {k: str(v) if v is not None else "" for k, v in data.items()}
         index.upsert(vectors=[(string_data['timestamp'], vector, string_data)])
         return True
@@ -72,13 +73,11 @@ def calculate_working_hours(entry_time, exit_time):
         entry = datetime.strptime(entry_time, "%H:%M:%S")
         exit = datetime.strptime(exit_time, "%H:%M:%S")
         duration = exit - entry
-        return max(0, duration.total_seconds() / 3600)  # Convert to hours, ensure non-negative
+        return max(0, duration.total_seconds() / 3600)
     except ValueError:
         return 0
 
 def main():
-    st.set_page_config(page_title="Leave Buddy", page_icon="🗓️", layout="wide")
-
     st.title("🗓️ Leave Buddy: Attendance and Leave Monitoring System")
 
     if not pinecone_initialized:
@@ -229,4 +228,5 @@ def main():
                         st.error("Failed to create query embedding. Please try again.")
 
 if __name__ == "__main__":
+    init_pinecone()
     main()
