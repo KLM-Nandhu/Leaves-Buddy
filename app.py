@@ -156,10 +156,10 @@ def main():
             st.text_input("📧 Email ID", value=email, disabled=True)
         
         with col2:
-            entry_date = st.date_input("📆 Date", date.today())
-            entry_time = st.time_input("🕒 Entry Time")
+            entry_date = st.date_input("📆 Date", date.today())  # Calendar opens on click
+            entry_time = st.time_input("🕒 Entry Time", datetime.now().time())  # Use .time() to get the time part
         
-        exit_time = st.time_input("🕒 Exit Time")
+        exit_time = st.time_input("🕒 Exit Time", datetime.now().time())  # Use .time() to get the time part
         
         if st.button("📝 Submit Attendance", use_container_width=True):
             if name and email and entry_time and exit_time:
@@ -171,21 +171,21 @@ def main():
                         "name": name,
                         "email": email,
                         "entry_date": entry_date.isoformat(),
-                        "entry_time": entry_time.isoformat(),
-                        "exit_time": exit_time.isoformat()
+                        "entry_time": entry_time.strftime("%H:%M:%S"),
+                        "exit_time": exit_time.strftime("%H:%M:%S")
                     }
                     
-                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time} {exit_time}"
+                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time.strftime('%H:%M:%S')} {exit_time.strftime('%H:%M:%S')}"
                     st.info("Creating embedding...")
                     vector = create_embedding(text_to_embed)
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
                         if store_in_pinecone(data, vector):
-                            working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
+                            working_hours = calculate_working_hours(entry_time.strftime("%H:%M:%S"), exit_time.strftime("%H:%M:%S"))
                             
                             # GPT-4 Analysis
-                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
+                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time.strftime('%H:%M:%S')} and left at {exit_time.strftime('%H:%M:%S')}, working for {working_hours:.2f} hours"
                             st.info("Generating analysis with GPT-4...")
                             analysis = query_gpt(prompt)
                             
@@ -213,7 +213,7 @@ def main():
         with col2:
             leave_to = st.date_input("📅 Leave To")
             leave_type = st.selectbox("🏷️ Leave Type", ["Annual Leave", "Sick Leave", "Personal Leave", "Other"])
-            permitted_by = st.text_input("👨‍💼 Permitted By")
+            permitted_by = st.selectbox("👨‍💼 Permitted By", ["Kalyani Mam", "Anjan Sir"])  # Dropdown with two names
         
         purpose = st.text_area("📝 Purpose of Leave")
         
@@ -233,7 +233,7 @@ def main():
                         "permitted_by": permitted_by
                     }
                     
-                    text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose}"
+                    text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose} permitted by {permitted_by}"
                     st.info("Creating embedding...")
                     vector = create_embedding(text_to_embed)
                     
@@ -242,7 +242,7 @@ def main():
                         if store_in_pinecone(data, vector):
                             
                             # GPT-4 Analysis
-                            prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
+                            prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose} permitted by {permitted_by}"
                             st.info("Generating analysis with GPT-4...")
                             analysis = query_gpt(prompt)
                             
