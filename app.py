@@ -1,5 +1,5 @@
 import streamlit as st
-from pinecone import Pinecone
+from pinecone import Pinecone, serverlessspec
 from datetime import date
 from openai import OpenAI
 import os
