@@ -15,6 +15,16 @@ load_dotenv()
 # Constants
 PINECONE_INDEX_NAME = "leave-buddy-index"
 
+# Name-Email mappings
+NAME_EMAIL_MAPPING = {
+    "Nandhakumar": "nandhakumar@klmsolutions.in",
+    "Dhanush": "dhanush@klmsolutions.in",
+    "Shubaritha": "shubaritha@klmsolutions.in",
+    "Subashree": "subashree@klmsolutions.in",
+    "Prateeka": "prateeka@klmsolutions.in",
+    "Akshara Shri": "akshara@klmsolutions.in"
+}
+
 # Initialize Pinecone
 pinecone_initialized = False
 index = None
@@ -24,10 +34,13 @@ def init_pinecone():
     try:
         pinecone.init(api_key=os.getenv("PINECONE_API_KEY"))
         index = pinecone.Index(PINECONE_INDEX_NAME)
+        # Test the connection
+        index.describe_index_stats()
         pinecone_initialized = True
         st.success(f"Connected to Pinecone index '{PINECONE_INDEX_NAME}' successfully")
     except Exception as e:
         st.error(f"Error connecting to Pinecone: {str(e)}")
+        st.error("Please check your Pinecone API key and index name in the .env file.")
 
 # Initialize OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -92,8 +105,9 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            name = st.text_input("👤 Employee Name")
-            email = st.text_input("📧 Email ID")
+            name = st.selectbox("👤 Employee Name", list(NAME_EMAIL_MAPPING.keys()))
+            email = NAME_EMAIL_MAPPING[name]
+            st.text_input("📧 Email ID", value=email, disabled=True)
         
         with col2:
             entry_date = st.date_input("📆 Date", date.today())
@@ -144,8 +158,9 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            name = st.text_input("👤 Employee Name")
-            email = st.text_input("📧 Email ID")
+            name = st.selectbox("👤 Employee Name", list(NAME_EMAIL_MAPPING.keys()))
+            email = NAME_EMAIL_MAPPING[name]
+            st.text_input("📧 Email ID", value=email, disabled=True)
             leave_from = st.date_input("📅 Leave From")
         
         with col2:
