@@ -1,6 +1,6 @@
 import streamlit as st
 import pinecone
-from datetime import datetime, date
+from datetime import datetime, date, time
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -73,7 +73,7 @@ def store_in_pinecone(data, vector):
 def query_gpt(prompt):
     try:
         response = client.chat_completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant analyzing attendance and leave data."},
                 {"role": "user", "content": prompt}
@@ -85,8 +85,8 @@ def query_gpt(prompt):
 
 def calculate_working_hours(entry_time, exit_time):
     try:
-        entry = datetime.strptime(entry_time, "%H:%M:%S")
-        exit = datetime.strptime(exit_time, "%H:%M:%S")
+        entry = datetime.strptime(entry_time, "%I:%M %p")
+        exit = datetime.strptime(exit_time, "%I:%M %p")
         duration = exit - entry
         return max(0, duration.total_seconds() / 3600)
     except ValueError:
@@ -156,10 +156,10 @@ def main():
             st.text_input("📧 Email ID", value=email, disabled=True)
         
         with col2:
-            entry_date = st.date_input("📆 Date", date.today())
-            entry_time = st.time_input("🕒 Entry Time")
+            entry_date = st.date_input("📆 Date", date.today())  # Calender opens on click
+            entry_time = st.time_input("🕒 Entry Time", datetime.now(), key="entry_time", format="h:mm A")  # 12-hour format with AM/PM
         
-        exit_time = st.time_input("🕒 Exit Time")
+        exit_time = st.time_input("🕒 Exit Time", datetime.now(), key="exit_time", format="h:mm A")  # 12-hour format with AM/PM
         
         if st.button("📝 Submit Attendance", use_container_width=True):
             if name and email and entry_time and exit_time:
@@ -171,21 +171,21 @@ def main():
                         "name": name,
                         "email": email,
                         "entry_date": entry_date.isoformat(),
-                        "entry_time": entry_time.isoformat(),
-                        "exit_time": exit_time.isoformat()
+                        "entry_time": entry_time.strftime("%I:%M %p"),
+                        "exit_time": exit_time.strftime("%I:%M %p")
                     }
                     
-                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time} {exit_time}"
+                    text_to_embed = f"Attendance: {name} {email} {entry_date} {entry_time.strftime('%I:%M %p')} {exit_time.strftime('%I:%M %p')}"
                     st.info("Creating embedding...")
                     vector = create_embedding(text_to_embed)
                     
                     if vector:
                         st.info("Storing data in Pinecone...")
                         if store_in_pinecone(data, vector):
-                            working_hours = calculate_working_hours(entry_time.isoformat(), exit_time.isoformat())
+                            working_hours = calculate_working_hours(entry_time.strftime("%I:%M %p"), exit_time.strftime("%I:%M %p"))
                             
                             # GPT-4 Analysis
-                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time} and left at {exit_time}, working for {working_hours:.2f} hours"
+                            prompt = f"Analyze the attendance: Employee {name} entered on {entry_date} at {entry_time.strftime('%I:%M %p')} and left at {exit_time.strftime('%I:%M %p')}, working for {working_hours:.2f} hours"
                             st.info("Generating analysis with GPT-4...")
                             analysis = query_gpt(prompt)
                             
@@ -213,7 +213,7 @@ def main():
         with col2:
             leave_to = st.date_input("📅 Leave To")
             leave_type = st.selectbox("🏷️ Leave Type", ["Annual Leave", "Sick Leave", "Personal Leave", "Other"])
-            permitted_by = st.text_input("👨‍💼 Permitted By")
+            permitted_by = st.selectbox("👨‍💼 Permitted By", ["Kalyani Mam", "Anjan Sir"])  # Dropdown with two names
         
         purpose = st.text_area("📝 Purpose of Leave")
         
@@ -233,7 +233,7 @@ def main():
                         "permitted_by": permitted_by
                     }
                     
-                    text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose}"
+                    text_to_embed = f"Leave: {name} {email} {leave_from} {leave_to} {leave_type} {purpose} permitted by {permitted_by}"
                     st.info("Creating embedding...")
                     vector = create_embedding(text_to_embed)
                     
@@ -242,7 +242,7 @@ def main():
                         if store_in_pinecone(data, vector):
                             
                             # GPT-4 Analysis
-                            prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose}"
+                            prompt = f"Analyze the leave request: Employee {name} requested {leave_type} from {leave_from} to {leave_to} for the purpose: {purpose} permitted by {permitted_by}"
                             st.info("Generating analysis with GPT-4...")
                             analysis = query_gpt(prompt)
                             
